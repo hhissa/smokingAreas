@@ -13,7 +13,7 @@ public:
   QASession() : m_currentIndex(0) {
     m_questions = {
         {"Wake up", {"...", "Why are you back?", "The answer is still no."}},
-        {"You are in pain.",
+        {"I want you to accept the deal. You're in pain.",
          {"It'll get better.", "I deserve it.", "and so what"}},
         {"Let me tell you the terms again.",
          {"No.", "Leave.", "Just stop it."}},
@@ -23,8 +23,24 @@ public:
          {"Yes. But I'm afraid.",
           "Yes. But I still believe it will get better.",
           "Yes. but I can't let go"}},
-        {"Wake up", {"...", "Why are you back?", "The answer is still no."}},
-        {"Wake up", {"...", "Why are you back?", "The answer is still no."}},
+        {"That's natural. Accept the deal and you won't feel this way.",
+         {"I want to see her again.", "I can fight back against depression",
+          "I can still make a life for myself."}},
+        {"All your problems will be solved.  "
+         "experiencing that change.",
+         {"I want you to do it.",
+          "Take the part of me that broken, and lock it up.", "Heal me."}},
+        {"You wont be the same. I'll need your final agreement",
+         {"Do it, make me a better person.", "I agree, I have to move forward.",
+          "Make me my old self again."}},
+        {"...", {"...", "...", "..."}},
+        {"Where am i?",
+         {"You're in hell.", "You're in heaven.",
+          "This was part of the deal."}},
+        {"I thought only the depressed part of me was going to die?",
+         {"You're not actually dead.", "You are the depressed part of you.",
+          "This was also part of the deal."}},
+
         // Add more questions here:
         // { "Your prompt?", { "Answer A", "Answer B", "Answer C" } },
     };

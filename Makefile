@@ -6,30 +6,18 @@ LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 GLSLC = glslc
 
 # Source files
-SOURCES = main.cpp TextRenderer.cpp
+SOURCES = main.cpp TextRenderer.cpp ImageFlasher.cpp
 TARGET = VulkanTest
 
-# Shader files (source and compiled)
-# Compiler settings
-CFLAGS = -std=c++17 -O2
-LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
-
-# Shader compiler
-GLSLC = glslc
-
-# Source files
-SOURCES = main.cpp TextRenderer.cpp
-TARGET = VulkanTest
-
-# Shader files (source and compiled)
-SHADER_SOURCES = shader.vert shader.frag text_vert.glsl text_frag.glsl
-SHADERS = vert.spv frag.spv text_vert.spv text_frag.spv
+# Shader files
+SHADER_SOURCES = shader.vert shader.frag text_vert.glsl text_frag.glsl image_flash.vert image_flash.frag
+SHADERS = vert.spv frag.spv text_vert.spv text_frag.spv image_flash.vert.spv image_flash.frag.spv
 
 # Default target - build everything
 all: $(SHADERS) $(TARGET)
 
 # Build executable
-$(TARGET): $(SOURCES) TextRenderer.h stb_truetype.h
+$(TARGET): $(SOURCES) TextRenderer.h ImageFlasher.h stb_truetype.h stb_image.h
 	g++ $(CFLAGS) -o $(TARGET) $(SOURCES) $(LDFLAGS)
 
 # Compile shaders
@@ -45,8 +33,14 @@ text_vert.spv: text_vert.glsl
 text_frag.spv: text_frag.glsl
 	$(GLSLC) -fshader-stage=fragment text_frag.glsl -o text_frag.spv
 
+image_flash.vert.spv: image_flash.vert
+	$(GLSLC) image_flash.vert -o image_flash.vert.spv
+
+image_flash.frag.spv: image_flash.frag
+	$(GLSLC) image_flash.frag -o image_flash.frag.spv
+
 # Phony targets
-.PHONY: all test clean shaders run help
+.PHONY: all test clean shaders run help rebuild
 
 # Build and run
 test: all

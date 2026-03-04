@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "ImageFlasher.h"
 #include "TextRenderer.h"
 #include "TextSystem.cpp"
 
@@ -128,6 +129,9 @@ private:
   bool framebufferResized = false;
 
   std::chrono::steady_clock::time_point lastKeyTime;
+  ImageFlasher imageFlasher;
+  std::vector<std::string> flashImagePaths = {
+      "Assets/img0.png", "Assets/img1.png", "Assets/img2.png"};
 
   QASession qa;
   float sceneStartTime = 0.0f;
@@ -166,6 +170,8 @@ private:
     textRenderer.init(device, physicalDevice, commandPool, graphicsQueue,
                       "./font.ttf", 32.0f);
     textRenderer.createPipeline(renderPass, swapChainExtent);
+    imageFlasher.init(device, physicalDevice, commandPool, graphicsQueue,
+                      renderPass, swapChainExtent, flashImagePaths);
     createCommandBuffer();
     createSyncObjects();
   }
@@ -270,7 +276,7 @@ private:
   void cleanup() {
     cleanupSwapChain();
     textRenderer.cleanup();
-
+    imageFlasher.cleanup();
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 
@@ -765,10 +771,10 @@ private:
     vkDeviceWaitIdle(device);
 
     cleanupSwapChain();
-
     createSwapChain();
     createImageViews();
     createFramebuffers();
+    imageFlasher.onSwapchainRecreate(renderPass, swapChainExtent);
   }
 
   void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
@@ -795,8 +801,6 @@ private:
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo,
                          VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      graphicsPipeline);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -811,37 +815,57 @@ private:
     scissor.offset = {0, 0};
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    if (qa.getCurrentIndex() == 8) {
+      float localTime = glfwGetTime() - sceneStartTime;
+      int flashIndex = (int)(localTime / 0.1f); // seconds per image
+      imageFlasher.draw(commandBuffer, flashIndex);
+    } else {
+      vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        graphicsPipeline);
 
-    struct PushConstants {
-      float resolution[2];
-      float time;
-      float starttime;
-      int state;
-    } pc;
+      struct PushConstants {
+        float resolution[2];
+        float time;
+        float starttime;
+        int state;
+      } pc;
 
-    pc.resolution[0] = (float)swapChainExtent.width;
-    pc.resolution[1] = (float)swapChainExtent.height;
-    pc.time = glfwGetTime();
-    pc.state = qa.getCurrentIndex();
-    pc.starttime = sceneStartTime;
+      pc.resolution[0] = (float)swapChainExtent.width;
+      pc.resolution[1] = (float)swapChainExtent.height;
+      pc.time = glfwGetTime();
+      pc.state = qa.getCurrentIndex();
+      pc.starttime = sceneStartTime;
 
-    vkCmdPushConstants(commandBuffer, pipelineLayout,
-                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants),
-                       &pc);
+      vkCmdPushConstants(commandBuffer, pipelineLayout,
+                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants),
+                         &pc);
 
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+      vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
-    float textColor[4] = {1.0f, 1.0f, 1.0f, 1.0f}; // White color
-    float titleColor[4] = {0.5f, 0.5f, 0.0f, 1.0f};
-    textRenderer.beginBatch();
-    textRenderer.addText(qa.getCurrentPrompt(), 100.0f, 800.0f, 2.0f,
-                         titleColor);
-    textRenderer.addText(qa.getAnswer(0), 100.0f, 850.0f, 1.0f, textColor);
-    textRenderer.addText(qa.getAnswer(1), 100.0f, 900.0f, 1.0f, textColor);
-    textRenderer.addText(qa.getAnswer(2), 100.0f, 950.0f, 1.0f, textColor);
+      float textColor[4] = {1.0f, 1.0f, 1.0f, 1.0f}; // White color
+      float titleColor[4] = {0.5f, 0.5f, 0.0f, 1.0f};
+      if (qa.getCurrentIndex() > 8) {
+        titleColor[0] = 1.0f;
+        titleColor[1] = 1.0f;
+        titleColor[2] = 1.0f;
+        titleColor[3] = 1.0f;
 
-    // add as many as you want...
-    textRenderer.endBatch(commandBuffer);
+        textColor[0] = 0.5f;
+        textColor[1] = 0.5f;
+        textColor[2] = 0.0f;
+        textColor[3] = 1.0f;
+      }
+
+      textRenderer.beginBatch();
+      textRenderer.addText(qa.getCurrentPrompt(), 100.0f, 800.0f, 2.0f,
+                           titleColor);
+      textRenderer.addText(qa.getAnswer(0), 100.0f, 850.0f, 1.0f, textColor);
+      textRenderer.addText(qa.getAnswer(1), 100.0f, 900.0f, 1.0f, textColor);
+      textRenderer.addText(qa.getAnswer(2), 100.0f, 950.0f, 1.0f, textColor);
+
+      // add as many as you want...
+      textRenderer.endBatch(commandBuffer);
+    }
     vkCmdEndRenderPass(commandBuffer);
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
       throw std::runtime_error("failed to record command buffer!");

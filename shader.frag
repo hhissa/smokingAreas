@@ -381,14 +381,17 @@ void initRayout(out RayInfo ray)
   } else if (pc.state == 3) {
     ray.origin = vec3(1.0, -3.5, 0.0);
     camRot = mat3(1.0);
-  } else if (pc.state == 4) {
+  } else if (pc.state >= 4 && pc.state < 8) {
     ray.origin = vec3(2.0, -3.5, 2.0);
     camRot = rotatey(-1.6);
-  } else if (pc.state == 5) {
+  } else if (pc.state == 9) {
     ray.origin = vec3(0.0, 0.0, -2.0);
     camRot = mat3(1.0);
-  } else if (pc.state >= 6) {
+  } else if (pc.state == 10) {
     ray.origin = vec3(0.0, 0.0, -2.0 - smoothstep(0.0, 10.0, pc.time - pc.starttime) * 10.0);
+    camRot = mat3(1.0);
+  } else if (pc.state >= 11) {
+    ray.origin = vec3(0.0, 0.0, -12.0);
     camRot = mat3(1.0);
   }
 
@@ -413,7 +416,7 @@ SDF map(vec3 p) {
 
   vec3 globalPos = vec3(0.0, 0.0, 0.0);
   //scene 1:
-  if (pc.state < 5)
+  if (pc.state < 9)
   {
     vec3 roomPos = vec3(0.0, 4.0, 0.0);
     vec3 roomSize = vec3(10.0);
@@ -516,7 +519,7 @@ SDF map(vec3 p) {
     return scene;
   } else {
     float localtime = pc.time - pc.starttime;
-    if (pc.state == 5)
+    if (pc.state == 9)
     {
       localtime = 0.0;
     }
@@ -640,7 +643,7 @@ void calcLighting(inout vec3 color, in vec3 p, in vec3 norm)
 
   float distance = length(light.position - p);
   float radius = 6.0 - abs(sin(pc.time * 0.5)) * 0.5;
-  if (pc.state >= 5)
+  if (pc.state >= 8)
   {
     radius += 2.0;
   }
