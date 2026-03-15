@@ -1,71 +1,140 @@
-# Compiler settings
-CFLAGS = -std=c++17 -O2
-LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
+# ─────────────────────────────────────────────────────────────────────────────
+# Makefile — SDF Renderer (compute pipeline)
+#
+# Targets:
+#   make          — build the binary  (default)
+#   make shaders  — compile all GLSL shaders to SPIR-V
+#   make all      — shaders + binary
+#   make run      — build everything and launch
+#   make clean    — remove build artefacts
+#   make info     — print resolved tool paths and flags
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Shader compiler
-GLSLC = glslc
+# ── Output names ─────────────────────────────────────────────────────────────
 
-# Source files
-SOURCES = main.cpp TextRenderer.cpp ImageFlasher.cpp
-TARGET = VulkanTest
+TARGET  := sdf-renderer
+BUILD   := build
 
-# Shader files
-SHADER_SOURCES = shader.vert shader.frag text_vert.glsl text_frag.glsl image_flash.vert image_flash.frag
-SHADERS = vert.spv frag.spv text_vert.spv text_frag.spv image_flash.vert.spv image_flash.frag.spv
+# ── Source files ──────────────────────────────────────────────────────────────
+# Collect every .cpp in the project tree automatically.
+# Add new translation units anywhere under src/ without touching this file.
 
-# Default target - build everything
-all: $(SHADERS) $(TARGET)
+SRCS := main.cpp \
+        src/core/VulkanContext.cpp \
+        src/core/Swapchain.cpp \
+        src/core/ComputePass.cpp \
+        src/core/Application.cpp \
+        src/scene/sceneValidator.cpp
 
-# Build executable
-$(TARGET): $(SOURCES) TextRenderer.h ImageFlasher.h stb_truetype.h stb_image.h
-	g++ $(CFLAGS) -o $(TARGET) $(SOURCES) $(LDFLAGS)
+OBJS := $(SRCS:%.cpp=$(BUILD)/%.o)
+DEPS := $(OBJS:.o=.d)
 
-# Compile shaders
-vert.spv: shader.vert
-	$(GLSLC) shader.vert -o vert.spv
+# ── Shader files ──────────────────────────────────────────────────────────────
+# Every .vert / .frag / .comp under shaders/ is compiled to a .spv alongside
+# the source file so the binary can find it with a relative path.
 
-frag.spv: shader.frag
-	$(GLSLC) shader.frag -o frag.spv
+GLSL_SRCS := $(shell find shaders -name '*.vert' -o -name '*.frag' -o -name '*.comp')
+SPIRV_OUTS := $(GLSL_SRCS:%=%.spv)
 
-text_vert.spv: text_vert.glsl
-	$(GLSLC) -fshader-stage=vertex text_vert.glsl -o text_vert.spv
+# ── Compiler ─────────────────────────────────────────────────────────────────
 
-text_frag.spv: text_frag.glsl
-	$(GLSLC) -fshader-stage=fragment text_frag.glsl -o text_frag.spv
+CXX      := g++
+CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -Wpedantic \
+            -MMD -MP                        \
+            -I.                             \
+            -Isrc                           \
+            -Isrc/core                      \
+            -Isrc/scene                     \
+            -Isrc/gpu
 
-image_flash.vert.spv: image_flash.vert
-	$(GLSLC) image_flash.vert -o image_flash.vert.spv
+# ── Platform detection ────────────────────────────────────────────────────────
+# GLFW and Vulkan are found differently on macOS (Homebrew) vs Linux.
 
-image_flash.frag.spv: image_flash.frag
-	$(GLSLC) image_flash.frag -o image_flash.frag.spv
+UNAME := $(shell uname -s)
 
-# Phony targets
-.PHONY: all test clean shaders run help rebuild
+ifeq ($(UNAME), Darwin)
+    # Homebrew paths — adjust prefix if you use a non-standard location.
+    BREW_PREFIX ?= $(shell brew --prefix 2>/dev/null || echo /usr/local)
 
-# Build and run
-test: all
+    CXXFLAGS += -I$(BREW_PREFIX)/include
+    LDFLAGS  := -L$(BREW_PREFIX)/lib \
+                -lglfw \
+                -lvulkan \
+                -framework Cocoa \
+                -framework IOKit \
+                -framework CoreVideo
+
+    # MoltenVK ships glslc inside the Vulkan SDK; fall back to glslangValidator.
+    GLSLC    := $(shell which glslc 2>/dev/null || echo glslangValidator)
+
+else
+    # Linux — assumes system packages or a Vulkan SDK on PATH.
+    CXXFLAGS += $(shell pkg-config --cflags glfw3 2>/dev/null)
+    LDFLAGS  := $(shell pkg-config --libs   glfw3 2>/dev/null) \
+                -lvulkan
+
+    GLSLC    := $(shell which glslc 2>/dev/null || echo glslangValidator)
+endif
+
+# glslangValidator needs a different output flag (-o vs positional argument).
+GLSLC_FLAGS := $(if $(findstring glslangValidator,$(GLSLC)),-V -o,-o)
+GLSLC_INCLUDES := -I shaders/include
+
+# ── SPIR-V rules ──────────────────────────────────────────────────────────────
+# Pattern rule: compile any GLSL stage to .spv next to the source file.
+# The binary loads shaders by filename (e.g. "shaders/triangle.comp.spv"),
+# so keeping them beside the sources keeps paths simple.
+
+%.spv: %
+	@echo "  GLSL  $<"
+	$(GLSLC) $(GLSLC_INCLUDES) $(GLSLC_FLAGS) $@ $<
+
+shaders: $(SPIRV_OUTS)
+
+# ── C++ compilation ───────────────────────────────────────────────────────────
+# Object files mirror the source tree under $(BUILD)/ so that parallel builds
+# (-j) don't collide and `make clean` removes only generated files.
+
+$(BUILD)/%.o: %.cpp
+	@mkdir -p $(dir $@)
+	@echo "  CXX   $<"
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# ── Link ──────────────────────────────────────────────────────────────────────
+
+$(TARGET): $(OBJS)
+	@echo "  LD    $@"
+	$(CXX) $(OBJS) $(LDFLAGS) -o $@
+
+# ── Convenience targets ───────────────────────────────────────────────────────
+
+.PHONY: all run clean info shaders
+
+all: shaders $(TARGET)
+
+run: all
 	./$(TARGET)
 
-run: test
-
-# Compile only shaders
-shaders: $(SHADERS)
-
-# Clean build artifacts
 clean:
-	rm -f $(TARGET)
-	rm -f *.spv
+	@echo "  CLEAN"
+	rm -rf $(BUILD) $(TARGET) $(SPIRV_OUTS)
 
-# Rebuild everything
-rebuild: clean all
+info:
+	@echo "CXX:      $(CXX)"
+	@echo "CXXFLAGS: $(CXXFLAGS)"
+	@echo "LDFLAGS:  $(LDFLAGS)"
+	@echo "GLSLC:    $(GLSLC)"
+	@echo "SRCS:     $(SRCS)"
+	@echo "GLSL:     $(GLSL_SRCS)"
+	@echo "SPIRV:    $(SPIRV_OUTS)"
 
-# Help
-help:
-	@echo "Available targets:"
-	@echo "  make          - Build shaders and executable"
-	@echo "  make test     - Build and run the application"
-	@echo "  make run      - Same as 'make test'"
-	@echo "  make shaders  - Compile only shaders"
-	@echo "  make clean    - Remove executable and compiled shaders"
-	@echo "  make rebuild  - Clean and rebuild everything"
-	@echo "  make help     - Show this help message"
+# ── Auto-generated dependency includes ───────────────────────────────────────
+# -MMD -MP above causes g++ to emit a .d file alongside each .o.
+# Including them here means editing a header triggers a rebuild of all
+# translation units that include it — without any manual dependency tracking.
+
+-include $(DEPS)
+
+# ── Default target ────────────────────────────────────────────────────────────
+
+.DEFAULT_GOAL := $(TARGET)
