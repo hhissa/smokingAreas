@@ -26,31 +26,31 @@ layout(local_size_x = 8, local_size_y = 8) in;
 #include "gpu_types.glsl"
 
 layout(set = 0, binding = 2) uniform UBO {
-    mat4  view;
-    mat4  projection;
-    mat4  invView;
-    mat4  invProjection;
-    vec4  cameraPos;
-    vec4  resolution;
-    float time;
+  mat4 view;
+  mat4 projection;
+  mat4 invView;
+  mat4 invProjection;
+  vec4 cameraPos;
+  vec4 resolution;
+  float time;
 } ubo;
 
 layout(set = 0, binding = 3, rgba8) uniform writeonly image2D outputImage;
 
 layout(push_constant) uniform PC {
-    int bvhRootIndex;
+  int bvhRootIndex;
 } pc;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const int   MAX_MARCH_STEPS  = 128;
-const float MAX_DIST         = 80.0;
-const float HIT_EPSILON      = 0.001;
-const float NORMAL_EPS       = 0.0005;
-const int   MAX_CSG_STACK    = 32;  // must match SceneValidator::kMaxCsgDepth
-const int   MAX_BVH_STACK    = 32;
+const int MAX_MARCH_STEPS = 128;
+const float MAX_DIST = 80.0;
+const float HIT_EPSILON = 0.001;
+const float NORMAL_EPS = 0.0005;
+const int MAX_CSG_STACK = 32; // must match SceneValidator::kMaxCsgDepth
+const int MAX_BVH_STACK = 32;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AABB ray intersection
@@ -58,13 +58,13 @@ const int   MAX_BVH_STACK    = 32;
 // ─────────────────────────────────────────────────────────────────────────────
 
 vec2 intersectAABB(vec3 ro, vec3 rdInv, vec3 bmin, vec3 bmax) {
-    vec3 t0 = (bmin - ro) * rdInv;
-    vec3 t1 = (bmax - ro) * rdInv;
-    vec3 tMin = min(t0, t1);
-    vec3 tMax = max(t0, t1);
-    float tNear = max(max(tMin.x, tMin.y), tMin.z);
-    float tFar  = min(min(tMax.x, tMax.y), tMax.z);
-    return vec2(tNear, tFar);
+  vec3 t0 = (bmin - ro) * rdInv;
+  vec3 t1 = (bmax - ro) * rdInv;
+  vec3 tMin = min(t0, t1);
+  vec3 tMax = max(t0, t1);
+  float tNear = max(max(tMin.x, tMin.y), tMin.z);
+  float tFar = min(min(tMax.x, tMax.y), tMax.z);
+  return vec2(tNear, tFar);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,63 +82,63 @@ vec2 intersectAABB(vec3 ro, vec3 rdInv, vec3 bmin, vec3 bmax) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 SDF evalCSG(int rootIdx, vec3 p) {
-    // Eval stack: (nodeIndex, phase)
-    int  evalIdx  [MAX_CSG_STACK];
-    int  evalPhase[MAX_CSG_STACK];
-    int  evalTop = 0;
+  // Eval stack: (nodeIndex, phase)
+  int evalIdx[MAX_CSG_STACK];
+  int evalPhase[MAX_CSG_STACK];
+  int evalTop = 0;
 
-    // Value stack: SDF results waiting to be consumed by parent ops
-    SDF  valStack[MAX_CSG_STACK];
-    int  valTop = 0;
+  // Value stack: SDF results waiting to be consumed by parent ops
+  SDF valStack[MAX_CSG_STACK];
+  int valTop = 0;
 
-    evalIdx  [0] = rootIdx;
-    evalPhase[0] = 0;
-    evalTop      = 1;
+  evalIdx[0] = rootIdx;
+  evalPhase[0] = 0;
+  evalTop = 1;
 
-    while (evalTop > 0) {
-        int  idx   = evalIdx  [evalTop - 1];
-        int  phase = evalPhase[evalTop - 1];
-        int  op    = nodeOp(idx);
+  while (evalTop > 0) {
+    int idx = evalIdx[evalTop - 1];
+    int phase = evalPhase[evalTop - 1];
+    int op = nodeOp(idx);
 
-        if (op == OP_LEAF) {
-            valStack[valTop++] = evalPrimitive(idx, p);
-            evalTop--;
-            continue;
-        }
-
-        if (phase == 0) {
-            // Descend left
-            evalPhase[evalTop - 1] = 1;
-            int lc = nodes[idx].leftChild;
-            if (lc >= 0) {
-                evalIdx  [evalTop] = lc;
-                evalPhase[evalTop] = 0;
-                evalTop++;
-            } else {
-                // No left child — push a far-away sentinel
-                valStack[valTop++] = SDF(MAX_DIST, vec3(0.5));
-            }
-        } else if (phase == 1) {
-            // Descend right
-            evalPhase[evalTop - 1] = 2;
-            int rc = nodes[idx].rightChild;
-            if (rc >= 0) {
-                evalIdx  [evalTop] = rc;
-                evalPhase[evalTop] = 0;
-                evalTop++;
-            } else {
-                valStack[valTop++] = SDF(MAX_DIST, vec3(0.5));
-            }
-        } else {
-            // Both children evaluated — apply op
-            SDF right = valStack[--valTop];
-            SDF left  = valStack[--valTop];
-            valStack[valTop++] = applyOp(idx, left, right);
-            evalTop--;
-        }
+    if (op == OP_LEAF) {
+      valStack[valTop++] = evalPrimitive(idx, p);
+      evalTop--;
+      continue;
     }
 
-    return valTop > 0 ? valStack[0] : SDF(MAX_DIST, vec3(0.5));
+    if (phase == 0) {
+      // Descend left
+      evalPhase[evalTop - 1] = 1;
+      int lc = nodes[idx].leftChild;
+      if (lc >= 0) {
+        evalIdx[evalTop] = lc;
+        evalPhase[evalTop] = 0;
+        evalTop++;
+      } else {
+        // No left child — push a far-away sentinel
+        valStack[valTop++] = SDF(MAX_DIST, vec3(0.5));
+      }
+    } else if (phase == 1) {
+      // Descend right
+      evalPhase[evalTop - 1] = 2;
+      int rc = nodes[idx].rightChild;
+      if (rc >= 0) {
+        evalIdx[evalTop] = rc;
+        evalPhase[evalTop] = 0;
+        evalTop++;
+      } else {
+        valStack[valTop++] = SDF(MAX_DIST, vec3(0.5));
+      }
+    } else {
+      // Both children evaluated — apply op
+      SDF right = valStack[--valTop];
+      SDF left = valStack[--valTop];
+      valStack[valTop++] = applyOp(idx, left, right);
+      evalTop--;
+    }
+  }
+
+  return valTop > 0 ? valStack[0] : SDF(MAX_DIST, vec3(0.5));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,37 +150,37 @@ SDF evalCSG(int rootIdx, vec3 p) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 SDF evalScene(vec3 p, vec3 rdInv) {
-    SDF best = SDF(MAX_DIST, vec3(0.2));
+  SDF best = SDF(MAX_DIST, vec3(0.2));
 
-    if (pc.bvhRootIndex < 0) return best;
+  if (pc.bvhRootIndex < 0) return best;
 
-    int  bvhStack[MAX_BVH_STACK];
-    int  bvhTop = 0;
-    bvhStack[bvhTop++] = pc.bvhRootIndex;
+  int bvhStack[MAX_BVH_STACK];
+  int bvhTop = 0;
+  bvhStack[bvhTop++] = pc.bvhRootIndex;
 
-    while (bvhTop > 0) {
-        int idx = bvhStack[--bvhTop];
-        int op  = nodeOp(idx);
+  while (bvhTop > 0) {
+    int idx = bvhStack[--bvhTop];
+    int op = nodeOp(idx);
 
-        if (op == OP_BVH_BRANCH) {
-            // Test bbox — only descend if ray passes through it.
-            vec3  bmin = nodes[idx].bboxMin.xyz;
-            vec3  bmax = nodes[idx].bboxMax.xyz;
-            vec2  t    = intersectAABB(p, rdInv, bmin, bmax);
-            if (t.x > t.y || t.y < 0.0) continue;
+    if (op == OP_BVH_BRANCH) {
+      // Test bbox — only descend if ray passes through it.
+      vec3 bmin = nodes[idx].bboxMin.xyz;
+      vec3 bmax = nodes[idx].bboxMax.xyz;
+      vec2 t = intersectAABB(p, rdInv, bmin, bmax);
+      if (t.x > t.y || t.y < 0.0) continue;
 
-            int lc = nodes[idx].leftChild;
-            int rc = nodes[idx].rightChild;
-            if (lc >= 0 && bvhTop < MAX_BVH_STACK) bvhStack[bvhTop++] = lc;
-            if (rc >= 0 && bvhTop < MAX_BVH_STACK) bvhStack[bvhTop++] = rc;
-        } else {
-            // CSG root — evaluate and keep closest
-            SDF s = evalCSG(idx, p);
-            if (s.dist < best.dist) best = s;
-        }
+      int lc = nodes[idx].leftChild;
+      int rc = nodes[idx].rightChild;
+      if (lc >= 0 && bvhTop < MAX_BVH_STACK) bvhStack[bvhTop++] = lc;
+      if (rc >= 0 && bvhTop < MAX_BVH_STACK) bvhStack[bvhTop++] = rc;
+    } else {
+      // CSG root — evaluate and keep closest
+      SDF s = evalCSG(idx, p);
+      if (s.dist < best.dist) best = s;
     }
+  }
 
-    return best;
+  return best;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,14 +188,14 @@ SDF evalScene(vec3 p, vec3 rdInv) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 vec3 calcNormal(vec3 p, vec3 rdInv) {
-    const vec2 k = vec2(1.0, -1.0);
-    const float h = NORMAL_EPS;
-    return normalize(
-        k.xyy * evalScene(p + k.xyy * h, rdInv).dist +
-        k.yyx * evalScene(p + k.yyx * h, rdInv).dist +
-        k.yxy * evalScene(p + k.yxy * h, rdInv).dist +
-        k.xxx * evalScene(p + k.xxx * h, rdInv).dist
-    );
+  const vec2 k = vec2(1.0, -1.0);
+  const float h = NORMAL_EPS;
+  return normalize(
+    k.xyy * evalScene(p + k.xyy * h, rdInv).dist +
+      k.yyx * evalScene(p + k.yyx * h, rdInv).dist +
+      k.yxy * evalScene(p + k.yxy * h, rdInv).dist +
+      k.xxx * evalScene(p + k.xxx * h, rdInv).dist
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -206,54 +206,54 @@ vec3 calcNormal(vec3 p, vec3 rdInv) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 vec3 skyColor(vec3 dir) {
-    float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
-    return mix(vec3(0.15, 0.2, 0.35), vec3(0.5, 0.65, 1.0), t);
+  float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+  return mix(vec3(0.15, 0.2, 0.35), vec3(0.5, 0.65, 1.0), t);
 }
 
 vec3 shade(vec3 pos, vec3 nor, vec3 rd, SDF hit) {
-    int   matId   = floatBitsToInt(nodes[0].materialId); // placeholder — hit gives colour
-    vec3  albedo  = hit.color;
-    float rough   = 0.6;
-    float metal   = 0.0;
-    float emissive= 0.0;
+  int matId = floatBitsToInt(nodes[0].materialId); // placeholder — hit gives colour
+  vec3 albedo = hit.color;
+  float rough = 0.6;
+  float metal = 0.0;
+  float emissive = 0.0;
 
-    // Read actual material if available
-    // (The hit SDF colour is set from material[matId].albedo in evalPrimitive.)
-    // For now use albedo from SDF and fixed roughness.
+  // Read actual material if available
+  // (The hit SDF colour is set from material[matId].albedo in evalPrimitive.)
+  // For now use albedo from SDF and fixed roughness.
 
-    vec3 lightDir = normalize(vec3(2.0, 3.5, -1.5));
-    vec3 viewDir  = -rd;
-    vec3 halfDir  = normalize(lightDir + viewDir);
+  vec3 lightDir = normalize(vec3(2.0, 3.5, -1.5));
+  vec3 viewDir = -rd;
+  vec3 halfDir = normalize(lightDir + viewDir);
 
-    float diff    = max(dot(nor, lightDir), 0.0);
-    float spec    = pow(max(dot(nor, halfDir), 0.0), mix(4.0, 128.0, 1.0 - rough));
-    float amb     = 0.04 + 0.06 * clamp(0.5 + 0.5 * nor.y, 0.0, 1.0);
-    float fresnel = pow(clamp(1.0 - dot(nor, viewDir), 0.0, 1.0), 5.0);
+  float diff = max(dot(nor, lightDir), 0.0);
+  float spec = pow(max(dot(nor, halfDir), 0.0), mix(4.0, 128.0, 1.0 - rough));
+  float amb = 0.04 + 0.06 * clamp(0.5 + 0.5 * nor.y, 0.0, 1.0);
+  float fresnel = pow(clamp(1.0 - dot(nor, viewDir), 0.0, 1.0), 5.0);
 
-    vec3 specCol  = mix(vec3(0.04), albedo, metal);
-    vec3 diffCol  = albedo * (1.0 - metal);
+  vec3 specCol = mix(vec3(0.04), albedo, metal);
+  vec3 diffCol = albedo * (1.0 - metal);
 
-    // Soft shadow: march toward the light and check for occlusion.
-    vec3  shadowOri = pos + nor * 0.002;
-    vec3  shadowRdInv = 1.0 / (lightDir + vec3(1e-7));
-    float shadow  = 1.0;
-    float st      = 0.02;
-    for (int i = 0; i < 24; ++i) {
-        SDF s = evalScene(shadowOri + lightDir * st, shadowRdInv);
-        shadow = min(shadow, 8.0 * s.dist / st);
-        st    += clamp(s.dist, 0.01, 0.3);
-        if (shadow < 0.001 || st > 8.0) break;
-    }
-    shadow = clamp(shadow, 0.0, 1.0);
+  // Soft shadow: march toward the light and check for occlusion.
+  vec3 shadowOri = pos + nor * 0.002;
+  vec3 shadowRdInv = 1.0 / (lightDir + vec3(1e-7));
+  float shadow = 1.0;
+  float st = 0.02;
+  for (int i = 0; i < 24; ++i) {
+    SDF s = evalScene(shadowOri + lightDir * st, shadowRdInv);
+    shadow = min(shadow, 8.0 * s.dist / st);
+    st += clamp(s.dist, 0.01, 0.3);
+    if (shadow < 0.001 || st > 8.0) break;
+  }
+  shadow = clamp(shadow, 0.0, 1.0);
 
-    vec3 col = diffCol * (amb + diff * shadow)
-             + specCol * spec * shadow * (0.5 + 0.5 * fresnel)
-             + skyColor(reflect(rd, nor)) * fresnel * (1.0 - rough) * 0.3;
+  vec3 col = diffCol * (amb + diff * shadow)
+      + specCol * spec * shadow * (0.5 + 0.5 * fresnel)
+      + skyColor(reflect(rd, nor)) * fresnel * (1.0 - rough) * 0.3;
 
-    // Emissive materials glow regardless of lighting.
-    col += albedo * emissive;
+  // Emissive materials glow regardless of lighting.
+  col += albedo * emissive;
 
-    return col;
+  return col;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,56 +261,62 @@ vec3 shade(vec3 pos, vec3 nor, vec3 rd, SDF hit) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 void main() {
-    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 size  = imageSize(outputImage);
-    if (coord.x >= size.x || coord.y >= size.y) return;
+  ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+  ivec2 size = imageSize(outputImage);
+  if (coord.x >= size.x || coord.y >= size.y) return;
 
-    // ── Ray generation ────────────────────────────────────────────────────────
-    // NDC in [-1, 1], Y pointing up.
-    vec2 uv  = (vec2(coord) + 0.5) / ubo.resolution.xy;
-    vec2 ndc = uv * 2.0 - 1.0;
-    ndc.y    = -ndc.y; // flip Y: Vulkan's +Y is down, NDC convention is +Y up
+  // ── Ray generation ────────────────────────────────────────────────────────
+  // NDC in [-1, 1], Y pointing up.
+  vec2 uv = (vec2(coord) + 0.5) / ubo.resolution.xy;
+  vec2 ndc = uv * 2.0 - 1.0;
+  // No Y flip here — CameraSystem::projectionMatrix already applies
+  // proj[1][1] *= -1 to account for Vulkan's inverted Y NDC convention.
 
-    // Unproject: NDC → view space direction → world space direction.
-    vec4 viewTarget = ubo.invProjection * vec4(ndc, 1.0, 1.0);
-    viewTarget     /= viewTarget.w;
-    vec3 rayDir     = normalize(mat3(ubo.invView) * viewTarget.xyz);
-    vec3 rayOrigin  = ubo.cameraPos.xyz;
-    vec3 rdInv      = 1.0 / (rayDir + vec3(1e-7)); // precompute for AABB tests
+  // Unproject: NDC → view space direction → world space direction.
+  vec4 viewTarget = ubo.invProjection * vec4(ndc, 1.0, 1.0);
+  viewTarget /= viewTarget.w;
+  vec3 rayDir = normalize(mat3(ubo.invView) * viewTarget.xyz);
+  vec3 rayOrigin = ubo.cameraPos.xyz;
+  vec3 rdInv = 1.0 / (rayDir + vec3(1e-7)); // precompute for AABB tests
 
-    // ── March ─────────────────────────────────────────────────────────────────
-    float t    = 0.02;
-    SDF   hit  = SDF(MAX_DIST, vec3(0.0));
-    bool  didHit = false;
+  // ── March ─────────────────────────────────────────────────────────────────
+  float t = 0.02;
+  SDF hit = SDF(MAX_DIST, vec3(0.0));
+  bool didHit = false;
 
-    for (int i = 0; i < MAX_MARCH_STEPS; ++i) {
-        vec3 p = rayOrigin + rayDir * t;
-        hit    = evalScene(p, rdInv);
+  for (int i = 0; i < MAX_MARCH_STEPS; ++i) {
+    vec3 p = rayOrigin + rayDir * t;
+    hit = evalScene(p, rdInv);
 
-        if (hit.dist < HIT_EPSILON) { didHit = true; break; }
-        if (t > MAX_DIST)           { break; }
-
-        t += hit.dist;
+    if (hit.dist < HIT_EPSILON) {
+      didHit = true;
+      break;
+    }
+    if (t > MAX_DIST) {
+      break;
     }
 
-    // ── Colour ────────────────────────────────────────────────────────────────
-    vec3 col;
+    t += hit.dist;
+  }
 
-    if (didHit) {
-        vec3 pos = rayOrigin + rayDir * t;
-        vec3 nor = calcNormal(pos, rdInv);
-        col      = shade(pos, nor, rayDir, hit);
+  // ── Colour ────────────────────────────────────────────────────────────────
+  vec3 col;
 
-        // Depth fog.
-        float fog = 1.0 - exp(-t * 0.04);
-        col       = mix(col, skyColor(rayDir), fog);
-    } else {
-        col = skyColor(rayDir);
-    }
+  if (didHit) {
+    vec3 pos = rayOrigin + rayDir * t;
+    vec3 nor = calcNormal(pos, rdInv);
+    col = shade(pos, nor, rayDir, hit);
 
-    // ── Tonemap (ACES filmic approximation) ───────────────────────────────────
-    col = col * (col + 0.0245786) / (col * (0.983729 * col + 0.4329510) + 0.238081);
-    col = pow(max(col, 0.0), vec3(1.0 / 2.2)); // gamma
+    // Depth fog.
+    float fog = 1.0 - exp(-t * 0.04);
+    col = mix(col, skyColor(rayDir), fog);
+  } else {
+    col = skyColor(rayDir);
+  }
 
-    imageStore(outputImage, coord, vec4(col, 1.0));
+  // ── Tonemap (ACES filmic approximation) ───────────────────────────────────
+  col = col * (col + 0.0245786) / (col * (0.983729 * col + 0.4329510) + 0.238081);
+  col = pow(max(col, 0.0), vec3(1.0 / 2.2)); // gamma
+
+  imageStore(outputImage, coord, vec4(col, 1.0));
 }

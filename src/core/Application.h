@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <sys/stat.h>
 #include <vector>
 
 #define GLFW_INCLUDE_VULKAN
@@ -9,8 +10,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "CameraSystem.h"
 #include "CommandPool.h"
 #include "ComputePass.h"
+#include "SceneSystem.h"
 #include "StorageImage.h"
 #include "Swapchain.h"
 #include "SyncObjects.h"
@@ -26,16 +29,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Application
 //
-// Frame pipeline:
-//   [CPU] orbit camera → build SceneUBO → memcpy into UBO slot[frame]
-//   [CPU] if scene dirty → flatten → memcpy nodes+materials into SSBOs
-//   [CMD] barrier storage image → GENERAL
-//   [CMD] dispatch raymarch.comp
-//   [CMD] barrier storage image → TRANSFER_SRC
-//   [CMD] barrier swapchain image → TRANSFER_DST
-//   [CMD] blit
-//   [CMD] barrier swapchain image → PRESENT_SRC
-//   [CPU] submit → present
+// Controls:
+//   Left / Right arrows  — previous / next camera
+//   Down / Up arrows     — previous / next scene
+//   R                    — force shader reload
 // ─────────────────────────────────────────────────────────────────────────────
 
 class Application {
@@ -59,16 +56,23 @@ private:
   StorageImage storageImage_;
   ComputePass computePass_;
 
-  // ── Scene ─────────────────────────────────────────────────────────────────
+  // ── Scene and camera systems ──────────────────────────────────────────────
   scene::MaterialRegistry materials_;
   scene::SceneGraph sceneGraph_;
   gpu::SceneFlattener flattener_;
   bool sceneDirty_ = true;
   int32_t bvhRoot_ = -1;
 
-  // ── GPU buffers (HOST_VISIBLE, persistently mapped) ───────────────────────
-  // Nodes + materials live in two SSBOs.
-  // UBO is double-buffered (one slot per frame-in-flight).
+  CameraSystem cameraSystem_;
+  SceneSystem sceneSystem_;
+
+  // Key edge-detection state
+  bool leftWas_ = false;
+  bool rightWas_ = false;
+  bool upWas_ = false;
+  bool downWas_ = false;
+
+  // ── GPU buffers ───────────────────────────────────────────────────────────
   VkBuffer nodeBuffer_ = VK_NULL_HANDLE;
   VkDeviceMemory nodeMemory_ = VK_NULL_HANDLE;
   void *nodeMapped_ = nullptr;
@@ -83,15 +87,14 @@ private:
   std::array<VkDeviceMemory, kMaxFramesInFlight> uboMemories_ = {};
   std::array<void *, kMaxFramesInFlight> uboMapped_ = {};
 
-  // ── Camera orbit state ────────────────────────────────────────────────────
-  float camTheta_ = 0.4f; // horizontal angle (radians)
-  float camPhi_ = 0.5f;   // vertical angle   (radians)
-  float camRadius_ = 6.0f;
+  // ── Shader hot-reload ─────────────────────────────────────────────────────
+  long long spvMtime_ = 0;
+  bool rKeyWasPressed_ = false;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   void initWindow();
   void initVulkan();
-  void initScene();
+  void initSystems(); // register all cameras and scenes
   void mainLoop();
   void cleanup();
 
@@ -100,19 +103,24 @@ private:
   void recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex,
                            int frameIndex);
   void uploadSceneIfDirty();
-  void uploadUBO(int frameIndex, float time);
+  void uploadUBO(int frameIndex);
+  void handleInput();
+
+  // ── Scene builders ─────────────────────────────────────────────────────────
+  // Each registered with sceneSystem_.add().
+  static void buildSceneTree(scene::SceneGraph &, scene::MaterialRegistry &);
+  static void buildSceneSpheres(scene::SceneGraph &, scene::MaterialRegistry &);
+  static void buildSceneArches(scene::SceneGraph &, scene::MaterialRegistry &);
+
+  // ── Resize / reload ───────────────────────────────────────────────────────
+  void handleResize();
+  void checkShaderReload();
 
   // ── Buffer helpers ────────────────────────────────────────────────────────
-  void ensureBuffer(VkBuffer &buf, VkDeviceMemory &mem, void *&mapped,
-                    VkDeviceSize &capacity, VkDeviceSize needed,
-                    VkBufferUsageFlags usage);
-  void destroyBuffer(VkBuffer &buf, VkDeviceMemory &mem, void *&mapped);
   VkBuffer createAndMap(VkDeviceSize size, VkBufferUsageFlags usage,
                         VkDeviceMemory &outMem, void *&outMapped);
+  void destroyBuffer(VkBuffer &buf, VkDeviceMemory &mem, void *&mapped);
 
-  // ── Resize ────────────────────────────────────────────────────────────────
-  void handleResize();
-
+  static long long spvModTime();
   static void framebufferResizeCallback(GLFWwindow *w, int, int);
 };
-;
